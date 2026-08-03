@@ -1,0 +1,70 @@
+{
+  "name": "ovs-mcp",
+  "version": "1.0.0",
+  "description": "Unofficial MCP server and CLI for Official Vegan Shop",
+  "type": "module",
+  "main": "dist/server.js",
+  "types": "dist/server.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/server.d.ts",
+      "import": "./dist/server.js"
+    }
+  },
+  "bin": {
+    "ovs-mcp": "dist/index.js",
+    "ovs": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "skills/ovs-mcp"
+  ],
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
+    "build": "npm run clean && tsc",
+    "typecheck": "tsc --noEmit",
+    "typecheck:tests": "tsc -p tsconfig.test.json",
+    "lint": "biome check src tests scripts",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts",
+    "cli": "tsx src/cli.ts",
+    "test": "vitest run",
+    "test:integration": "vitest run --config vitest.integration.ts",
+    "test:all": "npm test && npm run test:integration",
+    "test:privacy": "node scripts/privacy-audit.mjs",
+    "test:package": "node scripts/verify-package.mjs",
+    "verify": "npm run typecheck && npm run typecheck:tests && npm run lint && npm run test:all && npm run build && npm run test:privacy && npm run test:package",
+    "prepare": "npm run build",
+    "prepack": "npm run build && npm run test:privacy"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "official-vegan-shop",
+    "ovs",
+    "vegan"
+  ],
+  "author": "Nicolas Cleton",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ncleton-petitmaker/ovs-mcp.git"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.6",
+    "@types/express": "^5.0.6",
+    "@types/node": "^26.0.0",
+    "tsx": "^4.23.0",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.10"
+  }
+}
