@@ -2,7 +2,7 @@
 
 ## Runtime
 
-`src/index.ts` is the MCP composition root. It supports stdio and a stateless Streamable HTTP endpoint restricted to loopback. `src/server.ts` is side-effect free and can be imported by another Node.js application. `src/cli.ts` exposes the same read service without MCP. A GitHub npm spec runs the package through `npx` and its `prepare` build, so Codex and Claude Code do not need a prebuilt checkout.
+`src/index.ts` is the MCP composition root. It supports stdio and a stateless Streamable HTTP endpoint restricted to loopback. `src/server.ts` is side-effect free and can be imported by another Node.js application. `src/cli.ts` exposes the same read service without MCP. The audited `dist/` build is versioned so a GitHub npm spec can run through `npx` without installing development dependencies or compiling on the user's machine.
 
 `OvsService` owns public operations and normalization. `OvsClient` is the only component that sends HTTP requests. `session.ts` is the only component that reads or writes credentials.
 

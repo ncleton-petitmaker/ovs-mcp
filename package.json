@@ -39,7 +39,6 @@
     "test:privacy": "node scripts/privacy-audit.mjs",
     "test:package": "node scripts/verify-package.mjs",
     "verify": "npm run typecheck && npm run typecheck:tests && npm run lint && npm run test:all && npm run build && npm run test:privacy && npm run test:package",
-    "prepare": "npm run build",
     "prepack": "npm run build && npm run test:privacy"
   },
   "keywords": [

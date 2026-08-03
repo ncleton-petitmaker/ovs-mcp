@@ -6,7 +6,6 @@ const root = new URL("../", import.meta.url);
 const ignoredDirectories = new Set([
   ".git",
   "node_modules",
-  "dist",
   "coverage",
 ]);
 const forbiddenExtensions = new Set([
