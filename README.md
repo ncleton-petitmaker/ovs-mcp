@@ -22,7 +22,7 @@ No global installation or clone is required. Generic MCP configuration:
   "mcpServers": {
     "ovs": {
       "command": "npx",
-      "args": ["-y", "github:ncleton-petitmaker/ovs-mcp"]
+      "args": ["-y", "--package=github:ncleton-petitmaker/ovs-mcp", "ovs-mcp"]
     }
   }
 }
@@ -31,7 +31,7 @@ No global installation or clone is required. Generic MCP configuration:
 Claude Code:
 
 ```bash
-claude mcp add ovs -- npx -y github:ncleton-petitmaker/ovs-mcp
+claude mcp add ovs -- npx -y --package=github:ncleton-petitmaker/ovs-mcp ovs-mcp
 ```
 
 Codex configuration:
@@ -39,7 +39,7 @@ Codex configuration:
 ```toml
 [mcp_servers.ovs]
 command = "npx"
-args = ["-y", "github:ncleton-petitmaker/ovs-mcp"]
+args = ["-y", "--package=github:ncleton-petitmaker/ovs-mcp", "ovs-mcp"]
 ```
 
 The server starts even when no OVS account is connected. Its MCP instructions tell the client to call `connect_ovs` first. The tool reports `connection_required` and asks only for the local path to a private authenticated HAR; it never asks the user to paste a password, token, capture, customer record, or address into chat.
