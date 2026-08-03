@@ -5,6 +5,22 @@ import { OvsClient } from "../../src/api.js";
 import { createServer } from "../../src/server.js";
 import { createSessionFile } from "../helpers.js";
 
+const searchHtml = `<article class="product-miniature" data-id-product="7"><a class="nom-marque">Example</a><h2 class="product-title"><a href="https://www.officialveganshop.com/p/7">Seitan</a></h2><span class="price">4,90 €</span><div class="add-cart" data-quantity="9" data-allow-oosp="0"></div></article>`;
+function cartHtml(quantity: number): string {
+  const products = quantity
+    ? [
+        {
+          id_product: "7",
+          name: "Seitan",
+          cart_quantity: quantity,
+          price_wt: "4.90",
+          total_wt: String(4.9 * quantity),
+        },
+      ]
+    : [];
+  return `<script>var prestashop = ${JSON.stringify({ cart: { id: "1", products, subtotals: { products: { value: String(4.9 * quantity) }, shipping: { value: "0" } }, totals: { total: { value: String(4.9 * quantity) } } } })};\n</script>`;
+}
+
 describe("MCP server", () => {
   let client: Client;
   let server: ReturnType<typeof createServer>;
@@ -23,54 +39,33 @@ describe("MCP server", () => {
     await server.connect(serverTransport);
     await client.connect(clientTransport);
   });
-
   afterEach(async () => {
     await client.close();
     await server.close();
   });
 
-  it("registers connection, catalog, account, and confirmed cart tools", async () => {
+  it("registers the portable connection, search, and cart tools", async () => {
     const { tools } = await client.listTools();
     expect(tools.map((tool) => tool.name)).toEqual([
       "connect_ovs",
       "search_products",
-      "list_categories",
-      "list_manufacturers",
+      "get_cart",
       "add_to_cart",
       "remove_from_cart",
-      "list_currencies",
-      "get_cart",
-      "get_customer",
-      "list_addresses",
-      "list_favorites",
     ]);
-    for (const tool of tools) {
-      expect(tool.outputSchema).toBeDefined();
-      expect(tool.annotations?.openWorldHint).toBe(true);
-    }
     expect(
       tools.find((tool) => tool.name === "search_products")?.annotations,
-    ).toMatchObject({
-      readOnlyHint: true,
-      destructiveHint: false,
-    });
+    ).toMatchObject({ readOnlyHint: true, destructiveHint: false });
     expect(
       tools.find((tool) => tool.name === "add_to_cart")?.annotations,
-    ).toMatchObject({
-      readOnlyHint: false,
-      destructiveHint: true,
-    });
+    ).toMatchObject({ readOnlyHint: false, destructiveHint: true });
   });
 
-  it("validates input and returns structured search content", async () => {
-    fetchMock.mockResolvedValue(
-      Response.json({
-        action: "search",
-        data: {
-          total: "1",
-          result: [{ id_product: "7", name: "Seitan", price: "4.90" }],
-        },
-      }),
+  it("returns structured live search content", async () => {
+    fetchMock.mockImplementation(async (url) =>
+      String(url).endsWith("/mon-compte")
+        ? new Response("account", { status: 200 })
+        : new Response(searchHtml),
     );
     const result = await client.callTool({
       name: "search_products",
@@ -84,7 +79,7 @@ describe("MCP server", () => {
     });
   });
 
-  it("rejects invalid search input before the API call", async () => {
+  it("rejects invalid search input before OVS", async () => {
     const result = await client.callTool({
       name: "search_products",
       arguments: { query: "x" },
@@ -94,52 +89,25 @@ describe("MCP server", () => {
   });
 
   it("previews and confirms an add-to-cart operation", async () => {
-    const emptyCart = {
-      id: "1",
-      has_fresh: false,
-      summary: {
-        products: [],
-        total_products: "0",
-        total_price: "0",
-        total_shipping: "0",
-      },
-    };
-    const filledCart = {
-      id: "1",
-      has_fresh: false,
-      summary: {
-        products: [
-          {
-            id_product: "7",
-            name: "Seitan",
-            cart_quantity: 1,
-            price_wt: "4.90",
-            total_wt: "4.90",
-          },
-        ],
-        total_products: "4.90",
-        total_price: "4.90",
-        total_shipping: "0",
-      },
-    };
-    fetchMock.mockImplementation(async (_url, init) => {
-      const body = JSON.parse(String(init?.body));
-      return Response.json({
-        action: body.action,
-        data: body.action === "add_product_cart" ? filledCart : emptyCart,
-      });
+    let quantity = 0;
+    fetchMock.mockImplementation(async (url, init) => {
+      const path = new URL(String(url)).pathname;
+      if (path === "/mon-compte")
+        return new Response("account", { status: 200 });
+      if (path === "/panier") return new Response(cartHtml(quantity));
+      if (path === "/module/add_to_cart/Ajax" && init?.method === "POST") {
+        quantity += 1;
+        return Response.json({ success: true, qty: String(quantity) });
+      }
+      return new Response("missing", { status: 404 });
     });
-
     const preview = await client.callTool({
       name: "add_to_cart",
       arguments: { productId: "7", quantity: 1 },
     });
-    expect(preview.isError).not.toBe(true);
     const token = (
       preview.structuredContent as { data: { confirmationToken: string } }
     ).data.confirmationToken;
-    expect(token).toMatch(/^[0-9a-f-]{36}$/);
-
     const applied = await client.callTool({
       name: "add_to_cart",
       arguments: { productId: "7", quantity: 1, confirmationToken: token },

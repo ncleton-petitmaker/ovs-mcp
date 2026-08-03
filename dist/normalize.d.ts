@@ -28,14 +28,11 @@ export interface CartItem {
     reference: string | null;
 }
 export interface CartResult extends Record<string, unknown> {
-    cartId: string;
     items: CartItem[];
     totalProducts: string | number | null;
     totalPrice: string | number | null;
     totalShipping: string | number | null;
-    hasFresh: boolean | string | number | null;
 }
 export declare function normalizeCart(data: unknown): CartResult;
 export declare function cartQuantity(cart: CartResult, productId: string): number;
-export declare function normalizeSearch(data: unknown, query: string, page: number, limit: number): SearchResult;
 //# sourceMappingURL=normalize.d.ts.map

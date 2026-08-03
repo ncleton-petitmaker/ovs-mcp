@@ -1,68 +1,109 @@
 import { OvsError } from "./errors.js";
-import { loadSession, saveSession } from "./session.js";
+import { loadSession, OVS_ORIGIN, saveSession, } from "./session.js";
 export class OvsClient {
     #sessionPath;
     #fetch;
     #timeoutMs;
-    #session;
-    #refreshPromise;
+    #cookies = new Map();
+    #loaded = false;
+    #authenticated = false;
     constructor(options) {
         this.#sessionPath = options.sessionPath;
         this.#fetch = options.fetch ?? globalThis.fetch;
         this.#timeoutMs = options.timeoutMs ?? 20_000;
     }
-    async session() {
-        this.#session ??= await loadSession(this.#sessionPath);
-        return this.#session;
-    }
-    async call(endpoint, action, data) {
-        const body = data === undefined ? { action } : { action, data };
-        let response = await this.#request(endpoint, body);
-        if (response.status === 452 && action !== "refresh_token") {
-            await this.#refresh();
-            const session = await this.session();
-            const retriedData = data && "token" in data
-                ? { ...data, token: session.credentials.token }
-                : data;
-            response = await this.#request(endpoint, retriedData === undefined ? { action } : { action, data: retriedData });
+    async login(email, password) {
+        if (!email.trim() || !password)
+            throw new OvsError("Email and password are required.", "OVS_LOGIN_INVALID");
+        this.#cookies.clear();
+        this.#loaded = true;
+        this.#authenticated = false;
+        await this.request("/connexion", { redirect: "manual" }, false);
+        await this.request("/connexion", {
+            method: "POST",
+            redirect: "manual",
+            headers: { "content-type": "application/x-www-form-urlencoded" },
+            body: new URLSearchParams({
+                email: email.trim(),
+                password,
+                submitLogin: "1",
+            }),
+        }, false);
+        const account = await this.request("/mon-compte", { redirect: "manual" }, false);
+        if (account.status !== 200) {
+            this.#cookies.clear();
+            throw new OvsError("OVS rejected the email or password.", "OVS_LOGIN_REJECTED");
         }
-        if (!response.ok) {
-            throw new OvsError(`OVS API rejected ${endpoint}/${action} with HTTP ${response.status}. Re-import the session if authentication changed.`, response.status === 401 ||
-                response.status === 403 ||
-                response.status === 452
-                ? "OVS_AUTHENTICATION_FAILED"
-                : "OVS_UPSTREAM_ERROR", response.status >= 500);
-        }
-        return this.#parseEnvelope(response, action);
+        this.#authenticated = true;
+        await this.persist();
     }
-    async authenticatedCall(endpoint, action, data = {}) {
-        const session = await this.session();
-        return this.call(endpoint, action, {
-            ...data,
-            token: session.credentials.token,
-        });
-    }
-    async #request(endpoint, body) {
-        if (!/^\/[a-z_]+$/i.test(endpoint))
-            throw new OvsError("Invalid OVS endpoint.", "OVS_INVALID_ENDPOINT");
-        const session = await this.session();
-        const headers = {
-            accept: "application/json",
-            "accept-language": session.headers.acceptLanguage,
-            authorization: session.headers.authorization,
-            "cache-control": "no-cache",
-            "content-type": "application/json",
-            "user-agent": session.headers.userAgent,
-            "x-app-version": session.headers.appVersion,
-            "x-device-uuid": session.headers.deviceUuid,
-            "x-os": session.headers.os,
-            "x-os-version": session.headers.osVersion,
-        };
+    async isAuthenticated() {
         try {
-            return await this.#fetch(`${session.baseUrl}${endpoint}`, {
-                method: "POST",
+            await this.loadCookies();
+            if (this.#cookies.size === 0)
+                return false;
+            const response = await this.request("/mon-compte", { redirect: "manual" }, false);
+            this.#authenticated = response.status === 200;
+            if (this.#authenticated)
+                await this.persist();
+            return this.#authenticated;
+        }
+        catch (error) {
+            if (error instanceof Error &&
+                error.message.includes("session file not found"))
+                return false;
+            throw error;
+        }
+    }
+    async get(path) {
+        await this.requireAuthenticated();
+        return this.request(path, {}, true);
+    }
+    async postForm(path, values) {
+        await this.requireAuthenticated();
+        return this.request(path, {
+            method: "POST",
+            headers: { "content-type": "application/x-www-form-urlencoded" },
+            body: new URLSearchParams(values),
+        }, true);
+    }
+    async requireAuthenticated() {
+        if (this.#authenticated)
+            return;
+        if (!(await this.isAuthenticated())) {
+            throw new OvsError("OVS connection required. Call connect_ovs first.", "OVS_CONNECTION_REQUIRED");
+        }
+    }
+    async loadCookies() {
+        if (this.#loaded)
+            return;
+        const session = await loadSession(this.#sessionPath);
+        this.#cookies = new Map(Object.entries(session.cookies));
+        this.#loaded = true;
+    }
+    async persist() {
+        const session = {
+            version: 2,
+            backend: "ovs-website",
+            cookies: Object.fromEntries(this.#cookies),
+            authenticatedAt: new Date().toISOString(),
+        };
+        await saveSession(this.#sessionPath, session);
+    }
+    async request(path, init, persistCookies) {
+        if (!path.startsWith("/") || path.startsWith("//"))
+            throw new OvsError("Invalid OVS path.", "OVS_INVALID_ENDPOINT");
+        const headers = new Headers(init.headers);
+        headers.set("accept", headers.get("accept") ?? "text/html,application/json;q=0.9,*/*;q=0.8");
+        headers.set("accept-language", "fr-FR,fr;q=0.9");
+        headers.set("user-agent", "ovs-mcp/1.0 (+https://github.com/ncleton-petitmaker/ovs-mcp)");
+        if (this.#cookies.size > 0)
+            headers.set("cookie", [...this.#cookies].map(([key, value]) => `${key}=${value}`).join("; "));
+        let response;
+        try {
+            response = await this.#fetch(`${OVS_ORIGIN}${path}`, {
+                ...init,
                 headers,
-                body: JSON.stringify(body),
                 signal: AbortSignal.timeout(this.#timeoutMs),
             });
         }
@@ -70,66 +111,32 @@ export class OvsClient {
             const timeout = error instanceof Error &&
                 (error.name === "TimeoutError" || error.name === "AbortError");
             throw new OvsError(timeout
-                ? `OVS API did not answer within ${this.#timeoutMs} ms.`
-                : "OVS API network request failed.", timeout ? "OVS_TIMEOUT" : "OVS_NETWORK_ERROR", true);
+                ? `OVS did not answer within ${this.#timeoutMs} ms.`
+                : "OVS network request failed.", timeout ? "OVS_TIMEOUT" : "OVS_NETWORK_ERROR", true);
+        }
+        this.captureCookies(response.headers);
+        if (persistCookies && this.#authenticated)
+            await this.persist();
+        if (response.status >= 500)
+            throw new OvsError(`OVS returned HTTP ${response.status}.`, "OVS_UPSTREAM_ERROR", true);
+        return response;
+    }
+    captureCookies(headers) {
+        const values = typeof headers.getSetCookie === "function"
+            ? headers.getSetCookie()
+            : [headers.get("set-cookie") ?? ""];
+        for (const value of values) {
+            const pair = value.split(";", 1)[0];
+            const separator = pair?.indexOf("=") ?? -1;
+            if (!pair || separator < 1)
+                continue;
+            const name = pair.slice(0, separator).trim();
+            const cookie = pair.slice(separator + 1).trim();
+            if (!cookie)
+                this.#cookies.delete(name);
+            else
+                this.#cookies.set(name, cookie);
         }
     }
-    async #parseEnvelope(response, expectedAction) {
-        let value;
-        try {
-            value = await response.json();
-        }
-        catch {
-            throw new OvsError("OVS API returned invalid JSON.", "OVS_SCHEMA_CHANGED");
-        }
-        if (!value ||
-            typeof value !== "object" ||
-            !("action" in value) ||
-            !("data" in value)) {
-            throw new OvsError("OVS API response shape is no longer recognized.", "OVS_SCHEMA_CHANGED");
-        }
-        const envelope = value;
-        if (typeof envelope.action !== "string") {
-            throw new OvsError("OVS API action field is no longer recognized.", "OVS_SCHEMA_CHANGED");
-        }
-        if (envelope.action !== expectedAction) {
-            throw new OvsError(`OVS API returned action ${envelope.action} instead of ${expectedAction}.`, "OVS_SCHEMA_CHANGED");
-        }
-        return { action: envelope.action, data: envelope.data };
-    }
-    async #refresh() {
-        this.#refreshPromise ??= this.#performRefresh().finally(() => {
-            this.#refreshPromise = undefined;
-        });
-        return this.#refreshPromise;
-    }
-    async #performRefresh() {
-        const session = await this.session();
-        const response = await this.#request("/auth", {
-            action: "refresh_token",
-            data: { refresh_token: session.credentials.refreshToken },
-        });
-        if (!response.ok) {
-            throw new OvsError(`OVS session refresh failed with HTTP ${response.status}. Import a fresh session from the official app.`, "OVS_AUTHENTICATION_FAILED");
-        }
-        const envelope = await this.#parseEnvelope(response, "refresh_token");
-        if (!isRefreshData(envelope.data)) {
-            throw new OvsError("OVS refresh response shape is no longer recognized.", "OVS_SCHEMA_CHANGED");
-        }
-        this.#session = {
-            ...session,
-            credentials: {
-                token: envelope.data.token,
-                refreshToken: envelope.data.refresh_token,
-            },
-        };
-        await saveSession(this.#sessionPath, this.#session);
-    }
-}
-function isRefreshData(value) {
-    return Boolean(value &&
-        typeof value === "object" &&
-        typeof value.token === "string" &&
-        typeof value.refresh_token === "string");
 }
 //# sourceMappingURL=api.js.map

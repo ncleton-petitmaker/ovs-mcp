@@ -1,75 +1,51 @@
 import { describe, expect, it } from "vitest";
-import {
-  normalizeCart,
-  normalizeSearch,
-  stripSecrets,
-} from "../../src/normalize.js";
+import { normalizeCart, stripSecrets } from "../../src/normalize.js";
+import { parseProducts } from "../../src/service.js";
 
 describe("normalization", () => {
-  it("keeps actionable product fields", () => {
-    expect(
-      normalizeSearch(
-        {
-          total: "1",
-          result: [
-            {
-              id_product: 42,
-              name: "Seitan nature",
-              manufacturer_name: "Example",
-              category_name: "Épicerie",
-              price: "5.90",
-              quantity: 7,
-              available_for_order: true,
-              reference: "TEST-42",
-              link: "https://example.invalid/product/42",
-            },
-          ],
-        },
-        "seitan",
-        1,
-        20,
-      ),
-    ).toMatchObject({
-      total: 1,
-      products: [{ id: "42", name: "Seitan nature", quantity: 7 }],
-    });
+  it("extracts actionable product fields from OVS search HTML", () => {
+    const products = parseProducts(
+      `<article class="product-miniature" data-id-product="42"><a class="nom-marque">Example</a><h2 class="product-title"><a href="https://www.officialveganshop.com/p/42">Seitan &amp; poivre</a></h2><span class="price">5,90 €</span><div class="add-cart" data-quantity="7" data-allow-oosp="0"></div></article>`,
+    );
+    expect(products).toMatchObject([
+      {
+        id: "42",
+        name: "Seitan & poivre",
+        manufacturer: "Example",
+        quantity: 7,
+        availableForOrder: true,
+      },
+    ]);
   });
 
-  it("recursively removes authentication secrets from tool output", () => {
+  it("recursively removes authentication and personal fields", () => {
     expect(
       stripSecrets({
-        token: "SYNTHETIC",
-        nested: { refresh_token: "SYNTHETIC", id: 1 },
+        cookies: { secret: "SYNTHETIC" },
+        customer: { id: 1 },
+        nested: { id: 2 },
       }),
-    ).toEqual({
-      nested: { id: 1 },
-    });
+    ).toEqual({ nested: { id: 2 } });
   });
 
-  it("normalizes cart items without address or secure-key fields", () => {
+  it("normalizes website cart items without customer or address data", () => {
     expect(
       normalizeCart({
         id: "9",
-        secure_key: "SYNTHETIC",
-        has_fresh: false,
-        summary: {
-          products: [
-            {
-              id_product: 7,
-              name: "Seitan",
-              cart_quantity: "2",
-              price_wt: "4.90",
-              total_wt: "9.80",
-            },
-          ],
-          total_products: "9.80",
-          total_price: "9.80",
-          total_shipping: "0",
-          formattedAddresses: { delivery: "SYNTHETIC_PRIVATE_ADDRESS" },
-        },
+        products: [
+          {
+            id_product: 7,
+            name: "Seitan",
+            cart_quantity: "2",
+            price_wt: "4.90",
+            total_wt: "9.80",
+          },
+        ],
+        subtotals: { products: { value: "9.80" }, shipping: { value: "0" } },
+        totals: { total: { value: "9.80" } },
+        customer: { email: "private@example.invalid" },
       }),
     ).toEqual({
-      cartId: "9",
       items: [
         {
           productId: "7",
@@ -84,7 +60,6 @@ describe("normalization", () => {
       totalProducts: "9.80",
       totalPrice: "9.80",
       totalShipping: "0",
-      hasFresh: false,
     });
   });
 });

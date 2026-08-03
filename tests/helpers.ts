@@ -4,21 +4,10 @@ import { join } from "node:path";
 import type { OvsSession } from "../src/session.js";
 
 export const syntheticSession: OvsSession = {
-  version: 1,
-  baseUrl: "https://www.officialveganshop.com/module/vtj_api",
-  headers: {
-    authorization: "Bearer SYNTHETIC_TEST_VALUE",
-    deviceUuid: "00000000-0000-4000-8000-000000000000",
-    appVersion: "0.0-test",
-    os: "test",
-    osVersion: "0",
-    userAgent: "ovs-mcp-tests",
-    acceptLanguage: "fr-FR",
-  },
-  credentials: {
-    token: "SYNTHETIC_ACCOUNT_TOKEN",
-    refreshToken: "SYNTHETIC_REFRESH_TOKEN",
-  },
+  version: 2,
+  backend: "ovs-website",
+  cookies: { ovs_test_session: "SYNTHETIC_COOKIE_VALUE" },
+  authenticatedAt: "2026-01-01T00:00:00.000Z",
 };
 
 export async function createSessionFile(): Promise<string> {

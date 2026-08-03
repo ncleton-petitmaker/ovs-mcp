@@ -2,12 +2,12 @@
 
 ## Reporting
 
-Open a GitHub security advisory for code vulnerabilities. Do not open a public issue containing a session file, HAR, raw proxy flow, authorization header, token, refresh token, device identifier, email address, delivery address, telephone number, cart, or order.
+Report code vulnerabilities with a private GitHub security advisory. Never place a session file, cookie, email address, delivery address, telephone number, cart, or order in a public issue.
 
-If a credential was exposed, revoke or replace the OVS session first. Treat both the session JSON and the source capture like a password.
+If a session cookie was exposed, sign out of Official Vegan Shop and reconnect before reporting the problem. Treat the local session file like a password.
 
-## Supported boundary
+## Security boundary
 
-The server is intended for a local account owner. Streamable HTTP binds only to loopback and has no remote authentication layer. Use stdio for desktop MCP clients. Do not publish the HTTP port through a tunnel, reverse proxy, container port, or public interface.
+The server is intended for the account owner on their own computer. The optional Streamable HTTP transport binds only to loopback and has no remote authentication layer. Do not publish its port through a tunnel, reverse proxy, container port, or public interface.
 
-The project does not contain an OVS app credential. Every user must bootstrap a session from a device and account they control.
+Credentials are entered on a loopback-only page, sent directly to Official Vegan Shop, and never stored. The local session contains only cookies, is created with mode `0600`, and must never be committed or shared. Public MCP tools intentionally omit customer profiles and addresses.

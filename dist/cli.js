@@ -1,46 +1,38 @@
 #!/usr/bin/env node
-import { isAbsolute, resolve } from "node:path";
 import { OvsClient } from "./api.js";
-import { importSessionHar, importSessionJson } from "./import-session.js";
+import { startLoginServer } from "./login-server.js";
 import { cartQuantity } from "./normalize.js";
 import { OvsService } from "./service.js";
-import { loadSession, publicSessionSummary, resolveSessionPath, } from "./session.js";
+import { publicSessionSummary, resolveSessionPath } from "./session.js";
 async function main() {
     const args = process.argv.slice(2);
     const command = args.shift();
     if (!command || command === "help" || command === "--help")
         return usage();
-    if (command === "session") {
-        const action = args.shift();
-        const source = option(args, "--from");
-        const output = option(args, "--output");
-        if (!source || !output || !isAbsolute(output)) {
-            throw new Error("Session import requires --from <file> and an absolute --output <private-session.json>.");
-        }
-        if (action === "import-har")
-            await importSessionHar(resolve(source), output);
-        else if (action === "import-json")
-            await importSessionJson(resolve(source), output);
-        else
-            throw new Error("Unknown session command. Use import-har or import-json.");
-        process.stdout.write(`${JSON.stringify({ session: "imported", path: output, permissions: "0600" })}\n`);
-        return;
-    }
     const sessionPath = resolveSessionPath(option(args, "--session"));
     const client = new OvsClient({ sessionPath });
     const service = new OvsService(client);
     let output;
     switch (command) {
-        case "doctor": {
-            const session = await loadSession(sessionPath);
-            await service.listCurrencies();
-            output = {
-                status: "ok",
-                backend: "ovs-private-api",
-                session: publicSessionSummary(session),
-            };
+        case "connect": {
+            if (await client.isAuthenticated())
+                output = { status: "connected", session: publicSessionSummary() };
+            else {
+                const flow = await startLoginServer(client);
+                process.stdout.write(`Open this secure local page to connect OVS:\n${flow.url}\n`);
+                await flow.completed;
+                output = { status: "connected", session: publicSessionSummary() };
+            }
             break;
         }
+        case "doctor":
+            output = {
+                status: (await client.isAuthenticated()) ? "ok" : "connection_required",
+                session: (await client.isAuthenticated())
+                    ? publicSessionSummary()
+                    : undefined,
+            };
+            break;
         case "search": {
             const query = args
                 .filter((value) => !value.startsWith("--"))
@@ -51,26 +43,8 @@ async function main() {
             output = await service.searchProducts(query);
             break;
         }
-        case "categories":
-            output = await service.listCategories();
-            break;
-        case "manufacturers":
-            output = await service.listManufacturers();
-            break;
-        case "currencies":
-            output = await service.listCurrencies();
-            break;
         case "cart":
             output = await service.getCart();
-            break;
-        case "customer":
-            output = await service.getCustomer();
-            break;
-        case "addresses":
-            output = await service.listAddresses();
-            break;
-        case "favorites":
-            output = await service.listFavorites();
             break;
         case "add":
         case "remove": {
@@ -133,11 +107,10 @@ function flag(args, name) {
     return true;
 }
 function usage() {
-    process.stdout.write(`OVS CLI\n\nUsage:\n  ovs session import-har --from capture.har --output /absolute/private/session.json\n  ovs doctor --session /absolute/private/session.json\n  ovs search <query> --session /absolute/private/session.json\n  ovs categories|manufacturers|currencies|cart|customer|addresses|favorites --session <path>\n  ovs add|remove <product-id> [--quantity N] [--confirm] --session <path>\n`);
+    process.stdout.write("OVS CLI\n\nUsage:\n  ovs connect [--session /absolute/private/session.json]\n  ovs doctor [--session ...]\n  ovs search <query> [--session ...]\n  ovs cart [--session ...]\n  ovs add|remove <product-id> [--quantity N] [--confirm] [--session ...]\n");
 }
 main().catch((error) => {
-    const message = error instanceof Error ? error.message : String(error);
-    process.stderr.write(`OVS CLI error: ${message}\n`);
+    process.stderr.write(`OVS CLI error: ${error instanceof Error ? error.message : String(error)}\n`);
     process.exitCode = 1;
 });
 //# sourceMappingURL=cli.js.map

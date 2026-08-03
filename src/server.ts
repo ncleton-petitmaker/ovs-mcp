@@ -1,21 +1,19 @@
-import { stat } from "node:fs/promises";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { OvsClient } from "./api.js";
 import { ConfirmationStore, MutationCoordinator } from "./confirmations.js";
 import { safeError } from "./errors.js";
-import { importSessionHar } from "./import-session.js";
+import { type LoginFlow, startLoginServer } from "./login-server.js";
 import type { SearchResult } from "./normalize.js";
 import { cartQuantity } from "./normalize.js";
 import { OvsService } from "./service.js";
-import { loadSession, publicSessionSummary } from "./session.js";
+import { publicSessionSummary } from "./session.js";
 
 export interface CreateServerOptions {
   sessionPath: string;
   client?: OvsClient;
 }
-
-const annotations = {
+const readAnnotations = {
   readOnlyHint: true,
   destructiveHint: false,
   idempotentHint: true,
@@ -27,36 +25,29 @@ export function createServer(options: CreateServerOptions): McpServer {
   const server = new McpServer(
     {
       name: "ovs-mcp",
-      version: "1.0.0",
+      version: "1.1.0",
       websiteUrl: "https://github.com/ncleton-petitmaker/ovs-mcp",
     },
     {
       capabilities: { logging: {} },
       instructions:
-        "Call connect_ovs before the first OVS operation. If it reports connection_required, ask the user for the local path to an authenticated HAR captured from an OVS app session they control. Never ask the user to paste credentials, tokens, captures, customer data, or addresses into chat. Product search returns product IDs. Cart mutations require a preview call followed by the same tool with its confirmation token.",
+        "Call connect_ovs before the first OVS operation. If connection is required, present its secure login URL to the user. Never ask for OVS credentials in chat or in an MCP form. After connection, search_products returns product IDs. Cart mutations require a preview call followed by the same tool with its confirmation token.",
     },
   );
-  const service = new OvsService(
-    options.client ?? new OvsClient({ sessionPath: options.sessionPath }),
-  );
+  const client =
+    options.client ?? new OvsClient({ sessionPath: options.sessionPath });
+  const service = new OvsService(client);
   const confirmations = new ConfirmationStore();
   const mutations = new MutationCoordinator();
+  let loginFlow: LoginFlow | undefined;
 
   server.registerTool(
     "connect_ovs",
     {
       title: "Connect Official Vegan Shop",
       description:
-        "Check OVS authentication or privately import an authenticated HAR owned by the user. Call this when another tool reports that the session is missing.",
-      inputSchema: {
-        harPath: z
-          .string()
-          .min(1)
-          .optional()
-          .describe(
-            "Absolute local path to a private authenticated OVS HAR capture.",
-          ),
-      },
+        "Check the OVS connection. When needed, returns a private local login URL that the client must present to the user. Credentials never pass through MCP.",
+      inputSchema: {},
       outputSchema: genericOutput,
       annotations: {
         readOnlyHint: false,
@@ -65,33 +56,21 @@ export function createServer(options: CreateServerOptions): McpServer {
         openWorldHint: true,
       },
     },
-    async ({ harPath }) =>
+    async () =>
       result(async () => {
-        if (harPath) await importSessionHar(harPath, options.sessionPath);
-        const exists = await stat(options.sessionPath).then(
-          (value) => value.isFile(),
-          () => false,
-        );
-        if (!exists) {
+        if (await client.isAuthenticated()) {
+          loginFlow = undefined;
           return {
-            data: {
-              status: "connection_required",
-              sessionPath: options.sessionPath,
-              userAction:
-                "Capture one authenticated OVS app session as HAR on a device you control, then call connect_ovs again with its absolute local path.",
-              privacy:
-                "Keep the HAR local. Never upload it to GitHub, chat, an issue, or a model provider. Restore the phone proxy after capture.",
-            },
+            data: { status: "connected", session: publicSessionSummary() },
           };
         }
-        await service.listCurrencies();
+        loginFlow ??= await startLoginServer(client);
         return {
           data: {
-            status: "connected",
-            backend: "ovs-private-api",
-            session: publicSessionSummary(
-              await loadSession(options.sessionPath),
-            ),
+            status: "connection_required",
+            loginUrl: loginFlow.url,
+            userAction:
+              "Open this secure local page, sign in to Official Vegan Shop, then call connect_ovs again.",
           },
         };
       }),
@@ -129,7 +108,7 @@ export function createServer(options: CreateServerOptions): McpServer {
           }),
         ),
       },
-      annotations,
+      annotations: readAnnotations,
     },
     async ({ query, page, limit }) =>
       result(() => service.searchProducts(query, page, limit)),
@@ -137,19 +116,11 @@ export function createServer(options: CreateServerOptions): McpServer {
 
   registerReadTool(
     server,
-    "list_categories",
-    "List OVS categories",
-    "List active catalog categories.",
-    () => service.listCategories(),
+    "get_cart",
+    "Get OVS cart",
+    "Read the connected account cart without returning customer or address data.",
+    () => service.getCart(),
   );
-  registerReadTool(
-    server,
-    "list_manufacturers",
-    "List OVS manufacturers",
-    "List active brands that currently have products.",
-    () => service.listManufacturers(),
-  );
-
   registerCartMutation(
     server,
     "add_to_cart",
@@ -168,42 +139,9 @@ export function createServer(options: CreateServerOptions): McpServer {
     confirmations,
     mutations,
   );
-  registerReadTool(
-    server,
-    "list_currencies",
-    "List OVS currencies",
-    "List currencies exposed by OVS.",
-    () => service.listCurrencies(),
-  );
-  registerReadTool(
-    server,
-    "get_cart",
-    "Get OVS cart",
-    "Read the authenticated account cart.",
-    () => service.getCart(),
-  );
-  registerReadTool(
-    server,
-    "get_customer",
-    "Get OVS customer",
-    "Read the authenticated customer profile. This can contain personal data.",
-    () => service.getCustomer(),
-  );
-  registerReadTool(
-    server,
-    "list_addresses",
-    "List OVS addresses",
-    "Read delivery addresses for the authenticated account. This returns personal data.",
-    () => service.listAddresses(),
-  );
-  registerReadTool(
-    server,
-    "list_favorites",
-    "List OVS favorites",
-    "Read favorite products.",
-    () => service.listFavorites(),
-  );
-
+  server.server.onclose = () => {
+    if (loginFlow) void loginFlow.close().catch(() => undefined);
+  };
   return server;
 }
 
@@ -222,8 +160,8 @@ function registerCartMutation(
       title,
       description:
         operation === "add"
-          ? "Preview, confirm, and add one or more units of an observed OVS product ID."
-          : "Preview, confirm, and remove one or more units of an observed OVS product ID.",
+          ? "Preview, confirm, and add one or more units of an OVS product ID."
+          : "Preview, confirm, and remove one or more units of an OVS product ID.",
       inputSchema: {
         productId: z.string().regex(/^\d+$/),
         quantity: z.number().int().min(1).max(50).default(1),
@@ -242,11 +180,10 @@ function registerCartMutation(
         if (!confirmationToken) {
           const cart = await service.getCart();
           const currentQuantity = cartQuantity(cart, productId);
-          if (operation === "remove" && currentQuantity < quantity) {
+          if (operation === "remove" && currentQuantity < quantity)
             throw new Error(
               "Cannot remove more units than the cart currently contains.",
             );
-          }
           return {
             data: {
               status: "confirmation_required",
@@ -301,7 +238,7 @@ function registerReadTool(
       description,
       inputSchema: {},
       outputSchema: genericOutput,
-      annotations,
+      annotations: readAnnotations,
     },
     async () => result(async () => ({ data: await action() })),
   );

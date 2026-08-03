@@ -37,7 +37,6 @@ export class ConfirmationStore {
 }
 export function cartFingerprint(cart) {
     const state = {
-        cartId: cart.cartId,
         items: [...cart.items]
             .map((item) => ({ productId: item.productId, quantity: item.quantity }))
             .sort((a, b) => a.productId.localeCompare(b.productId)),

@@ -1,4 +1,4 @@
 interface:
   display_name: "OVS MCP"
   short_description: "Piloter Official Vegan Shop via MCP"
-  default_prompt: "Utilise OVS MCP pour rechercher des produits ou consulter mon compte OVS."
+  default_prompt: "Utilise OVS MCP pour connecter mon compte, rechercher des produits et gérer mon panier OVS."
