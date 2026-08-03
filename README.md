@@ -58,7 +58,7 @@ CLI alternative:
 git clone https://github.com/ncleton-petitmaker/ovs-mcp.git
 cd ovs-mcp
 npm install
-npm run build
+npm run compile
 node dist/cli.js session import-har \
   --from /absolute/private/ovs-session.har \
   --output ~/.config/ovs-mcp/session.json
@@ -180,7 +180,7 @@ npm run typecheck
 npm run typecheck:tests
 npm run lint
 npm run test:all
-npm run build
+npm run compile
 npm run test:privacy
 npm run test:package
 ```

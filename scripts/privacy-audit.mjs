@@ -3,11 +3,7 @@ import { readdir, readFile } from "node:fs/promises";
 import { extname, relative } from "node:path";
 
 const root = new URL("../", import.meta.url);
-const ignoredDirectories = new Set([
-  ".git",
-  "node_modules",
-  "coverage",
-]);
+const ignoredDirectories = new Set([".git", "node_modules", "coverage"]);
 const forbiddenExtensions = new Set([
   ".har",
   ".mitm",

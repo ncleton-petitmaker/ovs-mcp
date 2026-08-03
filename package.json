@@ -26,7 +26,7 @@
   },
   "scripts": {
     "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
-    "build": "npm run clean && tsc",
+    "compile": "npm run clean && tsc",
     "typecheck": "tsc --noEmit",
     "typecheck:tests": "tsc -p tsconfig.test.json",
     "lint": "biome check src tests scripts",
@@ -38,7 +38,7 @@
     "test:all": "npm test && npm run test:integration",
     "test:privacy": "node scripts/privacy-audit.mjs",
     "test:package": "node scripts/verify-package.mjs",
-    "verify": "npm run typecheck && npm run typecheck:tests && npm run lint && npm run test:all && npm run build && npm run test:privacy && npm run test:package"
+    "verify": "npm run typecheck && npm run typecheck:tests && npm run lint && npm run test:all && npm run compile && npm run test:privacy && npm run test:package"
   },
   "keywords": [
     "mcp",

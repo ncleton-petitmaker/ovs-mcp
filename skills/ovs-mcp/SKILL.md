@@ -24,7 +24,7 @@ Use this skill when the `ovs-mcp` server is installed from GitHub or from a chec
 CLI alternative:
 
    ```bash
-   npm run build
+   npm run compile
    node dist/cli.js session import-har --from /absolute/private/capture.har --output /absolute/private/session.json
    ```
 
