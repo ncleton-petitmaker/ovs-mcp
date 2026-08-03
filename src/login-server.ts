@@ -6,6 +6,9 @@ import {
 } from "node:http";
 import type { OvsClient } from "./api.js";
 
+const OVS_ACCOUNT_CREATION_URL =
+  "https://www.officialveganshop.com/connexion?create_account=1";
+
 export interface LoginFlow {
   url: string;
   completed: Promise<void>;
@@ -114,7 +117,7 @@ async function readBody(request: IncomingMessage): Promise<string> {
 }
 
 function formPage(error = ""): string {
-  return `<!doctype html><html lang="fr"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Connexion OVS</title><style>${styles}</style><main><h1>Connexion à Official Vegan Shop</h1><p>Connectez votre propre compte. Votre mot de passe est envoyé directement à OVS et n’est pas enregistré.</p>${error ? `<p class="error">${escapeHtml(error)}</p>` : ""}<form method="post" autocomplete="on"><label>Email<input name="email" type="email" autocomplete="username" required autofocus></label><label>Mot de passe<input name="password" type="password" autocomplete="current-password" required></label><button type="submit">Se connecter</button></form></main></html>`;
+  return `<!doctype html><html lang="fr"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Connexion OVS</title><style>${styles}</style><main><h1>Connexion à Official Vegan Shop</h1><p>Connectez votre propre compte. Votre mot de passe est envoyé directement à OVS et n’est pas enregistré.</p>${error ? `<p class="error">${escapeHtml(error)}</p>` : ""}<form method="post" autocomplete="on"><label>Email<input name="email" type="email" autocomplete="username" required autofocus></label><label>Mot de passe<input name="password" type="password" autocomplete="current-password" required></label><button type="submit">Se connecter</button></form><p class="create">Vous n’avez pas encore de compte ? <a href="${OVS_ACCOUNT_CREATION_URL}" target="_blank" rel="noopener noreferrer">Créer un compte OVS</a></p></main></html>`;
 }
 
 function page(title: string, message: string): string {
@@ -122,7 +125,7 @@ function page(title: string, message: string): string {
 }
 
 const styles =
-  "body{font:16px system-ui;background:#f5f7f4;color:#172018;margin:0}main{max-width:28rem;margin:10vh auto;background:white;padding:2rem;border-radius:1rem;box-shadow:0 8px 32px #0001}h1{font-size:1.5rem}label{display:block;margin:1rem 0}input{box-sizing:border-box;width:100%;padding:.75rem;margin-top:.35rem;border:1px solid #aab5aa;border-radius:.5rem}button{width:100%;padding:.8rem;border:0;border-radius:.5rem;background:#267a3e;color:white;font-weight:700}.error{color:#a01818}";
+  "body{font:16px system-ui;background:#f5f7f4;color:#172018;margin:0}main{max-width:28rem;margin:10vh auto;background:white;padding:2rem;border-radius:1rem;box-shadow:0 8px 32px #0001}h1{font-size:1.5rem}label{display:block;margin:1rem 0}input{box-sizing:border-box;width:100%;padding:.75rem;margin-top:.35rem;border:1px solid #aab5aa;border-radius:.5rem}button{width:100%;padding:.8rem;border:0;border-radius:.5rem;background:#267a3e;color:white;font-weight:700}.error{color:#a01818}.create{margin:1.5rem 0 0;color:#435443}.create a{color:#16642e;font-weight:650}";
 function escapeHtml(value: string): string {
   return value.replace(
     /[&<>"']/g,

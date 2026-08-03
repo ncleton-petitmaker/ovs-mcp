@@ -35,6 +35,8 @@ Demandez simplement :
 
 Le client appelle `connect_ovs` et affiche un lien de connexion local sécurisé. Saisissez vos identifiants sur cette page, puis revenez dans le client.
 
+Vous n’avez pas encore de compte ? Cette même page propose le lien officiel de création de compte OVS.
+
 - Le mot de passe ne passe jamais dans la conversation ni dans le protocole MCP.
 - Le mot de passe n’est jamais enregistré.
 - Seuls les cookies nécessaires à la session sont conservés localement dans un fichier privé (`0600`).
