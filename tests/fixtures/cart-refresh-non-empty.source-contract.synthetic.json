@@ -1,0 +1,9 @@
+{
+  "cart_detailed": "<div class=\"cart-overview js-cart\"><ul class=\"cart-items\"><li class=\"cart-item\"><div class=\"product-line-grid\"><div class=\"product-line-grid-body\"><div class=\"product-line-info\"><a class=\"label\" href=\"https://www.officialveganshop.com/produit-synthetique\" data-id_customization=\"0\">Seitan synthétique</a></div><div class=\"product-line-info product-price\"><div class=\"current-price\"><span class=\"price\">4,90 €</span></div></div></div><div class=\"product-line-grid-right product-line-actions\"><input class=\"js-cart-line-product-quantity\" data-product-id=\"7\" type=\"number\" value=\"2\" name=\"product-quantity-spin\"><span class=\"product-price\"><strong>9,80 €</strong></span><a class=\"remove-from-cart\" href=\"https://www.officialveganshop.com/panier?delete=1\" data-link-action=\"delete-from-cart\" data-id-product=\"7\" data-id-product-attribute=\"3\" data-id-customization=\"0\"></a></div></div></li></ul></div>",
+  "cart_detailed_totals": "<div class=\"cart-detailed-totals\"><div class=\"cart-summary-line\" id=\"cart-subtotal-products\"><span class=\"label js-subtotal\">2 articles</span><span class=\"value\">9,80 €</span></div><div class=\"cart-summary-line\" id=\"cart-subtotal-shipping\"><span class=\"label\">Livraison</span><span class=\"value\">0,00 €</span></div><div class=\"cart-summary-line cart-total\"><span class=\"label\">Total</span><span class=\"value\">9,80 €</span></div></div>",
+  "cart_summary_items_subtotal": "<div class=\"cart-summary-items-subtotal\"></div>",
+  "cart_summary_subtotals_container": "<div class=\"cart-summary-subtotals-container\"></div>",
+  "cart_summary_totals": "<div class=\"cart-summary-totals\"></div>",
+  "cart_detailed_actions": "<div class=\"cart-detailed-actions\"></div>",
+  "cart_voucher": "<div class=\"cart-voucher\"></div>"
+}

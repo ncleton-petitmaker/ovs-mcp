@@ -1,8 +1,8 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { OvsClient } from "./api.js";
-import { ConfirmationStore, MutationCoordinator } from "./confirmations.js";
-import { safeError } from "./errors.js";
+import { ConfirmationStore } from "./confirmations.js";
+import { cartMutationFailurePayload, safeError } from "./errors.js";
 import { startLoginServer } from "./login-server.js";
 import { cartQuantity } from "./normalize.js";
 import { OvsService } from "./service.js";
@@ -17,16 +17,15 @@ const genericOutput = { data: z.unknown() };
 export function createServer(options) {
     const server = new McpServer({
         name: "ovs-mcp",
-        version: "1.1.0",
+        version: "1.2.0",
         websiteUrl: "https://github.com/ncleton-petitmaker/ovs-mcp",
     }, {
         capabilities: { logging: {} },
-        instructions: "Call connect_ovs before the first OVS operation. If connection is required, present its secure login URL to the user. Never ask for OVS credentials in chat or in an MCP form. After connection, search_products returns product IDs. Cart mutations require a preview call followed by the same tool with its confirmation token.",
+        instructions: "Call connect_ovs before the first OVS operation. If connection is required, present its secure login URL to the user. Never ask for OVS credentials in chat or in an MCP form. After connection, search_products returns exact product, attribute, and customization IDs. Cart mutations require those exact IDs and a preview call followed by the same tool with its confirmation token.",
     });
     const client = options.client ?? new OvsClient({ sessionPath: options.sessionPath });
     const service = new OvsService(client);
-    const confirmations = new ConfirmationStore();
-    const mutations = new MutationCoordinator();
+    const confirmations = options.confirmationStore ?? new ConfirmationStore();
     let loginFlow;
     server.registerTool("connect_ovs", {
         title: "Connect Official Vegan Shop",
@@ -70,6 +69,8 @@ export function createServer(options) {
             total: z.number(),
             products: z.array(z.object({
                 id: z.string(),
+                productAttributeId: z.string(),
+                productCustomizationId: z.string().nullable(),
                 name: z.string(),
                 manufacturer: z.string().nullable(),
                 category: z.string().nullable(),
@@ -86,22 +87,24 @@ export function createServer(options) {
         annotations: readAnnotations,
     }, async ({ query, page, limit }) => result(() => service.searchProducts(query, page, limit)));
     registerReadTool(server, "get_cart", "Get OVS cart", "Read the connected account cart without returning customer or address data.", () => service.getCart());
-    registerCartMutation(server, "add_to_cart", "Add OVS product to cart", "add", service, confirmations, mutations);
-    registerCartMutation(server, "remove_from_cart", "Remove OVS product from cart", "remove", service, confirmations, mutations);
+    registerCartMutation(server, "add_to_cart", "Add OVS product to cart", "add", service, confirmations);
+    registerCartMutation(server, "remove_from_cart", "Remove OVS product from cart", "remove", service, confirmations);
     server.server.onclose = () => {
         if (loginFlow)
             void loginFlow.close().catch(() => undefined);
     };
     return server;
 }
-function registerCartMutation(server, name, title, operation, service, confirmations, mutations) {
+function registerCartMutation(server, name, title, operation, service, confirmations) {
     server.registerTool(name, {
         title,
         description: operation === "add"
-            ? "Preview, confirm, and add one or more units of an OVS product ID."
-            : "Preview, confirm, and remove one or more units of an OVS product ID.",
+            ? "Preview, confirm, and add one or more units of an exact OVS product variant returned by search_products."
+            : "Preview, confirm, and remove one or more units of an exact OVS product variant returned by search_products.",
         inputSchema: {
-            productId: z.string().regex(/^\d+$/),
+            productId: z.string().regex(/^[1-9]\d*$/),
+            productAttributeId: z.string().regex(/^\d+$/),
+            productCustomizationId: z.string().regex(/^\d+$/),
             quantity: z.number().int().min(1).max(50).default(1),
             confirmationToken: z.string().uuid().optional(),
         },
@@ -112,10 +115,10 @@ function registerCartMutation(server, name, title, operation, service, confirmat
             idempotentHint: false,
             openWorldHint: true,
         },
-    }, async ({ productId, quantity, confirmationToken }) => result(async () => {
+    }, async ({ productId, productAttributeId, productCustomizationId, quantity, confirmationToken, }) => result(async () => {
         if (!confirmationToken) {
             const cart = await service.getCart();
-            const currentQuantity = cartQuantity(cart, productId);
+            const currentQuantity = cartQuantity(cart, productId, productAttributeId, productCustomizationId);
             if (operation === "remove" && currentQuantity < quantity)
                 throw new Error("Cannot remove more units than the cart currently contains.");
             return {
@@ -123,24 +126,31 @@ function registerCartMutation(server, name, title, operation, service, confirmat
                     status: "confirmation_required",
                     operation,
                     productId,
+                    productAttributeId,
+                    productCustomizationId,
                     quantity,
                     currentQuantity,
                     resultingQuantity: currentQuantity + (operation === "add" ? quantity : -quantity),
-                    confirmationToken: confirmations.create(operation, productId, quantity, cart),
+                    confirmationToken: confirmations.create(operation, productId, productAttributeId, productCustomizationId, quantity, cart),
                     expiresInSeconds: 300,
                 },
             };
         }
-        return mutations.run(async () => {
-            const current = await service.getCart();
-            confirmations.consume(confirmationToken, operation, productId, quantity, current);
-            const cart = operation === "add"
-                ? await service.addToCart(productId, quantity)
-                : await service.removeFromCart(productId, quantity);
-            return {
-                data: { status: "applied", operation, productId, quantity, cart },
-            };
-        });
+        const expectedCartFingerprint = confirmations.consume(confirmationToken, operation, productId, productAttributeId, productCustomizationId, quantity);
+        const cart = operation === "add"
+            ? await service.addToCart(productId, productAttributeId, productCustomizationId, quantity, expectedCartFingerprint)
+            : await service.removeFromCart(productId, productAttributeId, productCustomizationId, quantity, expectedCartFingerprint);
+        return {
+            data: {
+                status: "applied",
+                operation,
+                productId,
+                productAttributeId,
+                productCustomizationId,
+                quantity,
+                cart,
+            },
+        };
     }));
 }
 function registerReadTool(server, name, title, description, action) {
@@ -166,6 +176,19 @@ async function result(action) {
         };
     }
     catch (error) {
+        const mutationFailure = cartMutationFailurePayload(error);
+        if (mutationFailure) {
+            return {
+                isError: true,
+                content: [
+                    {
+                        type: "text",
+                        text: JSON.stringify(mutationFailure, null, 2),
+                    },
+                ],
+                structuredContent: mutationFailure,
+            };
+        }
         const safe = safeError(error);
         return {
             isError: true,

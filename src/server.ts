@@ -1,8 +1,8 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { OvsClient } from "./api.js";
-import { ConfirmationStore, MutationCoordinator } from "./confirmations.js";
-import { safeError } from "./errors.js";
+import { ConfirmationStore } from "./confirmations.js";
+import { cartMutationFailurePayload, safeError } from "./errors.js";
 import { type LoginFlow, startLoginServer } from "./login-server.js";
 import type { SearchResult } from "./normalize.js";
 import { cartQuantity } from "./normalize.js";
@@ -12,6 +12,7 @@ import { publicSessionSummary } from "./session.js";
 export interface CreateServerOptions {
   sessionPath: string;
   client?: OvsClient;
+  confirmationStore?: ConfirmationStore;
 }
 const readAnnotations = {
   readOnlyHint: true,
@@ -25,20 +26,19 @@ export function createServer(options: CreateServerOptions): McpServer {
   const server = new McpServer(
     {
       name: "ovs-mcp",
-      version: "1.1.0",
+      version: "1.2.0",
       websiteUrl: "https://github.com/ncleton-petitmaker/ovs-mcp",
     },
     {
       capabilities: { logging: {} },
       instructions:
-        "Call connect_ovs before the first OVS operation. If connection is required, present its secure login URL to the user. Never ask for OVS credentials in chat or in an MCP form. After connection, search_products returns product IDs. Cart mutations require a preview call followed by the same tool with its confirmation token.",
+        "Call connect_ovs before the first OVS operation. If connection is required, present its secure login URL to the user. Never ask for OVS credentials in chat or in an MCP form. After connection, search_products returns exact product, attribute, and customization IDs. Cart mutations require those exact IDs and a preview call followed by the same tool with its confirmation token.",
     },
   );
   const client =
     options.client ?? new OvsClient({ sessionPath: options.sessionPath });
   const service = new OvsService(client);
-  const confirmations = new ConfirmationStore();
-  const mutations = new MutationCoordinator();
+  const confirmations = options.confirmationStore ?? new ConfirmationStore();
   let loginFlow: LoginFlow | undefined;
 
   server.registerTool(
@@ -94,6 +94,8 @@ export function createServer(options: CreateServerOptions): McpServer {
         products: z.array(
           z.object({
             id: z.string(),
+            productAttributeId: z.string(),
+            productCustomizationId: z.string().nullable(),
             name: z.string(),
             manufacturer: z.string().nullable(),
             category: z.string().nullable(),
@@ -128,7 +130,6 @@ export function createServer(options: CreateServerOptions): McpServer {
     "add",
     service,
     confirmations,
-    mutations,
   );
   registerCartMutation(
     server,
@@ -137,7 +138,6 @@ export function createServer(options: CreateServerOptions): McpServer {
     "remove",
     service,
     confirmations,
-    mutations,
   );
   server.server.onclose = () => {
     if (loginFlow) void loginFlow.close().catch(() => undefined);
@@ -152,7 +152,6 @@ function registerCartMutation(
   operation: "add" | "remove",
   service: OvsService,
   confirmations: ConfirmationStore,
-  mutations: MutationCoordinator,
 ): void {
   server.registerTool(
     name,
@@ -160,10 +159,12 @@ function registerCartMutation(
       title,
       description:
         operation === "add"
-          ? "Preview, confirm, and add one or more units of an OVS product ID."
-          : "Preview, confirm, and remove one or more units of an OVS product ID.",
+          ? "Preview, confirm, and add one or more units of an exact OVS product variant returned by search_products."
+          : "Preview, confirm, and remove one or more units of an exact OVS product variant returned by search_products.",
       inputSchema: {
-        productId: z.string().regex(/^\d+$/),
+        productId: z.string().regex(/^[1-9]\d*$/),
+        productAttributeId: z.string().regex(/^\d+$/),
+        productCustomizationId: z.string().regex(/^\d+$/),
         quantity: z.number().int().min(1).max(50).default(1),
         confirmationToken: z.string().uuid().optional(),
       },
@@ -175,11 +176,22 @@ function registerCartMutation(
         openWorldHint: true,
       },
     },
-    async ({ productId, quantity, confirmationToken }) =>
+    async ({
+      productId,
+      productAttributeId,
+      productCustomizationId,
+      quantity,
+      confirmationToken,
+    }) =>
       result(async () => {
         if (!confirmationToken) {
           const cart = await service.getCart();
-          const currentQuantity = cartQuantity(cart, productId);
+          const currentQuantity = cartQuantity(
+            cart,
+            productId,
+            productAttributeId,
+            productCustomizationId,
+          );
           if (operation === "remove" && currentQuantity < quantity)
             throw new Error(
               "Cannot remove more units than the cart currently contains.",
@@ -189,6 +201,8 @@ function registerCartMutation(
               status: "confirmation_required",
               operation,
               productId,
+              productAttributeId,
+              productCustomizationId,
               quantity,
               currentQuantity,
               resultingQuantity:
@@ -196,6 +210,8 @@ function registerCartMutation(
               confirmationToken: confirmations.create(
                 operation,
                 productId,
+                productAttributeId,
+                productCustomizationId,
                 quantity,
                 cart,
               ),
@@ -203,23 +219,41 @@ function registerCartMutation(
             },
           };
         }
-        return mutations.run(async () => {
-          const current = await service.getCart();
-          confirmations.consume(
-            confirmationToken,
+        const expectedCartFingerprint = confirmations.consume(
+          confirmationToken,
+          operation,
+          productId,
+          productAttributeId,
+          productCustomizationId,
+          quantity,
+        );
+        const cart =
+          operation === "add"
+            ? await service.addToCart(
+                productId,
+                productAttributeId,
+                productCustomizationId,
+                quantity,
+                expectedCartFingerprint,
+              )
+            : await service.removeFromCart(
+                productId,
+                productAttributeId,
+                productCustomizationId,
+                quantity,
+                expectedCartFingerprint,
+              );
+        return {
+          data: {
+            status: "applied",
             operation,
             productId,
+            productAttributeId,
+            productCustomizationId,
             quantity,
-            current,
-          );
-          const cart =
-            operation === "add"
-              ? await service.addToCart(productId, quantity)
-              : await service.removeFromCart(productId, quantity);
-          return {
-            data: { status: "applied", operation, productId, quantity, cart },
-          };
-        });
+            cart,
+          },
+        };
       }),
   );
 }
@@ -259,6 +293,19 @@ async function result<T extends Record<string, unknown> | SearchResult>(
       structuredContent,
     };
   } catch (error) {
+    const mutationFailure = cartMutationFailurePayload(error);
+    if (mutationFailure) {
+      return {
+        isError: true,
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify(mutationFailure, null, 2),
+          },
+        ],
+        structuredContent: mutationFailure,
+      };
+    }
     const safe = safeError(error);
     return {
       isError: true,

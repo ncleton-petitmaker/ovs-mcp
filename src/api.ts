@@ -26,6 +26,10 @@ export class OvsClient {
     this.#timeoutMs = options.timeoutMs ?? 20_000;
   }
 
+  get sessionPath(): string {
+    return this.#sessionPath;
+  }
+
   async login(email: string, password: string): Promise<void> {
     if (!email.trim() || !password)
       throw new OvsError(
@@ -88,9 +92,9 @@ export class OvsClient {
     }
   }
 
-  async get(path: string): Promise<Response> {
+  async get(path: string, headers?: HeadersInit): Promise<Response> {
     await this.requireAuthenticated();
-    return this.request(path, {}, true);
+    return this.request(path, { headers }, true);
   }
 
   async postForm(

@@ -6,9 +6,10 @@ export interface OvsClientOptions {
 export declare class OvsClient {
     #private;
     constructor(options: OvsClientOptions);
+    get sessionPath(): string;
     login(email: string, password: string): Promise<void>;
     isAuthenticated(): Promise<boolean>;
-    get(path: string): Promise<Response>;
+    get(path: string, headers?: HeadersInit): Promise<Response>;
     postForm(path: string, values: Record<string, string>): Promise<Response>;
     private requireAuthenticated;
     private loadCookies;

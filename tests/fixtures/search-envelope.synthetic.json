@@ -1,0 +1,35 @@
+{
+  "rendered_products_top": "<div class=\"products-top\"></div>",
+  "rendered_products": "<article class=\"product-miniature js-product-miniature\" data-id-product=\"7\" data-id-product-attribute=\"3\"><a class=\"nom-marque\">Synthetic Brand</a><h2 class=\"product-title\"><a href=\"https://www.officialveganshop.com/produit-synthetique\">Seitan synthétique</a></h2><span class=\"price\">4,90 €</span><div class=\"add-cart\" data-id-product=\"7\" data-id-product-attribute=\"3\" data-id-customization=\"0\" data-minimal-quantity=\"1\" data-quantity=\"9\" data-cart-qty=\"0\" data-allow-oosp=\"0\"></div></article>",
+  "rendered_products_bottom": "<div class=\"products-bottom\"></div>",
+  "result": {
+    "categories": []
+  },
+  "label": "Résultat synthétique",
+  "products": [
+    {
+      "id_product": "7",
+      "name": "Seitan synthétique",
+      "add_to_cart_url": "/panier?add=1&id_product=7&id_product_attribute=3"
+    }
+  ],
+  "sort_orders": [],
+  "sort_selected": "position",
+  "pagination": {
+    "total_items": "1",
+    "items_shown_from": 1,
+    "items_shown_to": 1,
+    "current_page": 1,
+    "pages_count": 1,
+    "pages": {
+      "1": {
+        "page": 1
+      }
+    },
+    "should_be_displayed": false
+  },
+  "rendered_facets": "",
+  "rendered_active_filters": "",
+  "js_enabled": true,
+  "current_url": "https://www.officialveganshop.com/recherche?s=synthetic"
+}

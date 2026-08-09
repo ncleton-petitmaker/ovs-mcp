@@ -51,6 +51,10 @@ Exemples de demandes :
 > Montre-moi le panier OVS.
 
 Toute modification du panier est prévisualisée et exige une confirmation liée à l’état exact du panier.
+La recherche retourne `id`, `productAttributeId` et
+`productCustomizationId`. Ces trois identifiants désignent ensemble la ligne
+exacte ; le serveur refuse une mutation qui omet la variante ou la
+personnalisation au lieu de supposer silencieusement la valeur `0`.
 
 ## Outils MCP
 
@@ -68,7 +72,21 @@ Toute modification du panier est prévisualisée et exige une confirmation liée
 npx -y --package=github:ncleton-petitmaker/ovs-mcp ovs connect
 npx -y --package=github:ncleton-petitmaker/ovs-mcp ovs search "seitan"
 npx -y --package=github:ncleton-petitmaker/ovs-mcp ovs cart
+npx -y --package=github:ncleton-petitmaker/ovs-mcp ovs add 17170 --attribute 0 --customization 0
 ```
+
+La commande `add` ou `remove` sans `--confirm` ne modifie rien : elle retourne
+l’état attendu et une empreinte du panier. Pour appliquer ensuite exactement
+cette prévisualisation, répétez la commande avec `--confirm` et
+`--cart-fingerprint <empreinte-retournée>`. Si le panier a changé entre les
+deux appels, la commande échoue et exige une nouvelle prévisualisation.
+
+Une écriture dont la relecture devient impossible ou incohérente échoue avec
+un objet structuré contenant `cart_may_be_partially_modified=true`, les
+identifiants exacts de la cible, `requested_units` et `applied_units`.
+`applied_units` vaut `null` tant qu’une relecture indépendante ne permet pas de
+prouver le nombre réellement appliqué. Le connecteur ne répète jamais
+automatiquement une écriture ambiguë.
 
 ## Développement
 
@@ -87,5 +105,10 @@ node dist/index.js --transport http
 ## Sécurité et confidentialité
 
 Le dépôt ne contient aucun compte, identifiant, cookie, panier ou fixture personnelle. Le contrôle de confidentialité analyse aussi le paquet distribuable avant publication. Consultez [SECURITY.md](SECURITY.md) pour signaler un problème sans publier de secret.
+
+Les fixtures de test sont exclusivement synthétiques, à l’exception de
+l’enveloppe vide publique et expurgée du mini-panier. Le contrat observé et les
+limites de chaque preuve sont documentés dans
+`skills/ovs-mcp/references/observed-contract.md`.
 
 Licence MIT.

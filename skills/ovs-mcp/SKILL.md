@@ -12,9 +12,11 @@ Use this skill when `ovs-mcp` is installed from GitHub or a checkout.
 1. Call `connect_ovs` before the first operation.
 2. If it returns `connection_required`, present `loginUrl` to the user. Never request or accept an OVS password in chat or an MCP form.
 3. After the user completes the secure page, call `connect_ovs` again and require `connected`.
-4. Use `search_products` to obtain current product IDs and availability.
+4. Use `search_products` to obtain the current `id`, `productAttributeId`,
+   `productCustomizationId`, and availability. Preserve all three identifiers.
 5. Read `get_cart` before planning a change.
-6. Call `add_to_cart` or `remove_from_cart` without a confirmation token to preview the exact result.
+6. Call `add_to_cart` or `remove_from_cart` with the exact three identifiers
+   and without a confirmation token to preview the exact result.
 7. Explain the proposed change and obtain the user's confirmation.
 8. Repeat the same tool call with the returned token. If the cart changed, request a new preview.
 

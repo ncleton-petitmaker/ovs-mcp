@@ -1,0 +1,9 @@
+{
+  "cart_detailed": "<div class=\"cart-overview js-cart\" data-refresh-url=\"//www.officialveganshop.com/panier?ajax=1&amp;action=refresh\"><span class=\"no-items\">Panier vide</span></div>",
+  "cart_detailed_totals": "<div class=\"cart-detailed-totals\"><div class=\"cart-summary-line\" id=\"cart-subtotal-products\"><span class=\"label js-subtotal\">0 articles</span><span class=\"value\">0,00 €</span></div><div class=\"cart-summary-line cart-total\"><span class=\"label\">Total</span><span class=\"value\">0,00 €</span></div></div>",
+  "cart_summary_items_subtotal": "<div class=\"cart-summary-items-subtotal\"></div>",
+  "cart_summary_subtotals_container": "<div class=\"cart-summary-subtotals-container\"></div>",
+  "cart_summary_totals": "<div class=\"cart-summary-totals\"></div>",
+  "cart_detailed_actions": "<div class=\"cart-detailed-actions\"></div>",
+  "cart_voucher": "<div class=\"cart-voucher\"></div>"
+}

@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 import { OvsClient } from "./api.js";
+import { cartFingerprint } from "./confirmations.js";
+import { cartMutationFailurePayload } from "./errors.js";
 import { startLoginServer } from "./login-server.js";
 import { cartQuantity } from "./normalize.js";
 import { OvsService } from "./service.js";
@@ -51,15 +53,33 @@ async function main(): Promise<void> {
     case "add":
     case "remove": {
       const productId = args.shift();
+      const productAttributeId = option(args, "--attribute");
+      const productCustomizationId = option(args, "--customization");
       const quantity = Number(option(args, "--quantity") ?? "1");
+      const expectedFingerprint = option(args, "--cart-fingerprint");
       const confirmed = flag(args, "--confirm");
-      if (!productId || !/^\d+$/.test(productId))
+      if (!productId || !/^[1-9]\d*$/.test(productId))
         throw new Error("Cart product ID must be a positive integer.");
+      if (!productAttributeId || !/^\d+$/.test(productAttributeId))
+        throw new Error(
+          "--attribute must contain the exact non-negative productAttributeId returned by search.",
+        );
+      if (!productCustomizationId || !/^\d+$/.test(productCustomizationId))
+        throw new Error(
+          "--customization must contain the exact non-negative productCustomizationId returned by search.",
+        );
       if (!Number.isInteger(quantity) || quantity < 1 || quantity > 50)
         throw new Error("Cart quantity must be an integer from 1 to 50.");
+      if (args.length > 0)
+        throw new Error(`Unknown cart arguments: ${args.join(" ")}`);
       if (!confirmed) {
         const cart = await service.getCart();
-        const currentQuantity = cartQuantity(cart, productId);
+        const currentQuantity = cartQuantity(
+          cart,
+          productId,
+          productAttributeId,
+          productCustomizationId,
+        );
         if (command === "remove" && currentQuantity < quantity)
           throw new Error(
             "Cannot remove more units than the cart currently contains.",
@@ -68,21 +88,47 @@ async function main(): Promise<void> {
           status: "confirmation_required",
           operation: command,
           productId,
+          productAttributeId,
+          productCustomizationId,
           quantity,
           currentQuantity,
           resultingQuantity:
             currentQuantity + (command === "add" ? quantity : -quantity),
-          next: "Run the same command with --confirm to apply it.",
+          cartFingerprint: cartFingerprint(cart),
+          next: "Run the same command with --confirm and the returned --cart-fingerprint to apply it.",
         };
       } else {
+        if (!expectedFingerprint || !/^[a-f0-9]{64}$/.test(expectedFingerprint))
+          throw new Error(
+            "--confirm requires the exact --cart-fingerprint returned by the preview.",
+          );
+        const current = await service.getCart();
+        if (cartFingerprint(current) !== expectedFingerprint)
+          throw new Error(
+            "Cart changed after preview. Run the command again without --confirm.",
+          );
         const cart =
           command === "add"
-            ? await service.addToCart(productId, quantity)
-            : await service.removeFromCart(productId, quantity);
+            ? await service.addToCart(
+                productId,
+                productAttributeId,
+                productCustomizationId,
+                quantity,
+                expectedFingerprint,
+              )
+            : await service.removeFromCart(
+                productId,
+                productAttributeId,
+                productCustomizationId,
+                quantity,
+                expectedFingerprint,
+              );
         output = {
           status: "applied",
           operation: command,
           productId,
+          productAttributeId,
+          productCustomizationId,
           quantity,
           cart,
         };
@@ -111,11 +157,17 @@ function flag(args: string[], name: string): boolean {
 }
 function usage(): void {
   process.stdout.write(
-    "OVS CLI\n\nUsage:\n  ovs connect [--session /absolute/private/session.json]\n  ovs doctor [--session ...]\n  ovs search <query> [--session ...]\n  ovs cart [--session ...]\n  ovs add|remove <product-id> [--quantity N] [--confirm] [--session ...]\n",
+    "OVS CLI\n\nUsage:\n  ovs connect [--session /absolute/private/session.json]\n  ovs doctor [--session ...]\n  ovs search <query> [--session ...]\n  ovs cart [--session ...]\n  ovs add|remove <product-id> --attribute <id> --customization <id> [--quantity N] [--confirm --cart-fingerprint <sha256>] [--session ...]\n",
   );
 }
 
 main().catch((error: unknown) => {
+  const mutationFailure = cartMutationFailurePayload(error);
+  if (mutationFailure) {
+    process.stdout.write(`${JSON.stringify(mutationFailure, null, 2)}\n`);
+    process.exitCode = 1;
+    return;
+  }
   process.stderr.write(
     `OVS CLI error: ${error instanceof Error ? error.message : String(error)}\n`,
   );

@@ -1,6 +1,8 @@
 export declare function stripSecrets(value: unknown): unknown;
 export interface SearchProduct {
     id: string;
+    productAttributeId: string;
+    productCustomizationId: string | null;
     name: string;
     manufacturer: string | null;
     category: string | null;
@@ -20,6 +22,8 @@ export interface SearchResult extends Record<string, unknown> {
 }
 export interface CartItem {
     productId: string;
+    productAttributeId: string;
+    productCustomizationId: string;
     name: string;
     quantity: number;
     unitPrice: string | number | null;
@@ -34,5 +38,5 @@ export interface CartResult extends Record<string, unknown> {
     totalShipping: string | number | null;
 }
 export declare function normalizeCart(data: unknown): CartResult;
-export declare function cartQuantity(cart: CartResult, productId: string): number;
+export declare function cartQuantity(cart: CartResult, productId: string, productAttributeId: string, productCustomizationId: string): number;
 //# sourceMappingURL=normalize.d.ts.map

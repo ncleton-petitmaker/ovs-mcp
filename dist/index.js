@@ -2,6 +2,7 @@
 import { createMcpExpressApp } from "@modelcontextprotocol/sdk/server/express.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { ConfirmationStore } from "./confirmations.js";
 import { createServer } from "./server.js";
 import { resolveSessionPath } from "./session.js";
 async function main() {
@@ -23,8 +24,15 @@ async function main() {
     if (!Number.isInteger(port) || port < 1 || port > 65_535)
         throw new Error("OVS_MCP_PORT is invalid.");
     const app = createMcpExpressApp({ host });
+    // Streamable HTTP is stateless at the protocol layer, but confirmation
+    // tokens must survive the preview POST so the following confirmation POST
+    // can consume the same single-use state for this local process.
+    const httpConfirmationStore = new ConfirmationStore();
     app.post("/mcp", async (request, response) => {
-        const server = createServer({ sessionPath });
+        const server = createServer({
+            sessionPath,
+            confirmationStore: httpConfirmationStore,
+        });
         const transport = new StreamableHTTPServerTransport({
             sessionIdGenerator: undefined,
         });

@@ -22,6 +22,8 @@ export function stripSecrets(value: unknown): unknown {
 
 export interface SearchProduct {
   id: string;
+  productAttributeId: string;
+  productCustomizationId: string | null;
   name: string;
   manufacturer: string | null;
   category: string | null;
@@ -43,6 +45,8 @@ export interface SearchResult extends Record<string, unknown> {
 
 export interface CartItem {
   productId: string;
+  productAttributeId: string;
+  productCustomizationId: string;
   name: string;
   quantity: number;
   unitPrice: string | number | null;
@@ -66,30 +70,70 @@ export function normalizeCart(data: unknown): CartResult {
     throw new Error("OVS cart no longer contains products.");
   const totals = object(cart.totals);
   const subtotals = object(cart.subtotals);
+  const items = cart.products.map(normalizeCartItem);
+  const declaredProductsCount = numeric(cart.products_count);
+  const actualProductsCount = items.reduce(
+    (total, item) => total + item.quantity,
+    0,
+  );
+  if (
+    cart.products_count !== undefined &&
+    (declaredProductsCount === null ||
+      declaredProductsCount !== actualProductsCount)
+  ) {
+    throw new Error("OVS cart products_count no longer matches its products.");
+  }
   return {
-    items: cart.products.map(normalizeCartItem),
+    items,
     totalProducts: totalValue(object(subtotals?.products)),
     totalPrice: totalValue(object(totals?.total)),
     totalShipping: totalValue(object(subtotals?.shipping)),
   };
 }
 
-export function cartQuantity(cart: CartResult, productId: string): number {
-  return cart.items.find((item) => item.productId === productId)?.quantity ?? 0;
+export function cartQuantity(
+  cart: CartResult,
+  productId: string,
+  productAttributeId: string,
+  productCustomizationId: string,
+): number {
+  return (
+    cart.items.find(
+      (item) =>
+        item.productId === productId &&
+        item.productAttributeId === productAttributeId &&
+        item.productCustomizationId === productCustomizationId,
+    )?.quantity ?? 0
+  );
 }
 
 function normalizeCartItem(value: unknown): CartItem {
   const item = object(value);
   if (!item) throw new Error("OVS cart product is no longer an object.");
   const productId = scalarString(item.id_product);
+  const productAttributeId = nonNegativeIntegerString(
+    item.id_product_attribute,
+  );
+  const productCustomizationId = Object.hasOwn(item, "id_customization")
+    ? nullableCustomizationId(item.id_customization)
+    : null;
   const name = scalarString(item.name);
   const quantity = numeric(item.cart_quantity);
-  if (!productId || !name || quantity === null)
+  if (
+    !productId ||
+    !/^[1-9]\d*$/.test(productId) ||
+    productAttributeId === null ||
+    productCustomizationId === null ||
+    !name ||
+    quantity === null
+  )
     throw new Error(
-      "OVS cart product no longer contains id_product, name, and cart_quantity.",
+      "OVS cart product no longer contains its exact product, variant, customization, name, and quantity.",
     );
   return {
     productId,
+    productAttributeId,
+    productCustomizationId,
     name,
     quantity,
     unitPrice: nullableScalar(item.price_wt ?? item.price),
@@ -119,10 +163,23 @@ function nullableString(value: unknown): string | null {
   return scalarString(value);
 }
 function nullableScalar(value: unknown): string | number | null {
-  return typeof value === "string" || typeof value === "number" ? value : null;
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value !== "string") return null;
+  return value.trim() ? value : null;
 }
 function numeric(value: unknown): number | null {
-  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "number" && Number.isInteger(value) && value >= 0)
+    return value;
   if (typeof value === "string" && /^\d+$/.test(value)) return Number(value);
   return null;
+}
+
+function nonNegativeIntegerString(value: unknown): string | null {
+  const normalized = scalarString(value);
+  return normalized !== null && /^\d+$/.test(normalized) ? normalized : null;
+}
+
+function nullableCustomizationId(value: unknown): string | null {
+  if (value === null) return "0";
+  return nonNegativeIntegerString(value);
 }

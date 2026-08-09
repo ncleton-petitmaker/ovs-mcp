@@ -12,6 +12,9 @@ export class OvsClient {
         this.#fetch = options.fetch ?? globalThis.fetch;
         this.#timeoutMs = options.timeoutMs ?? 20_000;
     }
+    get sessionPath() {
+        return this.#sessionPath;
+    }
     async login(email, password) {
         if (!email.trim() || !password)
             throw new OvsError("Email and password are required.", "OVS_LOGIN_INVALID");
@@ -55,9 +58,9 @@ export class OvsClient {
             throw error;
         }
     }
-    async get(path) {
+    async get(path, headers) {
         await this.requireAuthenticated();
-        return this.request(path, {}, true);
+        return this.request(path, { headers }, true);
     }
     async postForm(path, values) {
         await this.requireAuthenticated();

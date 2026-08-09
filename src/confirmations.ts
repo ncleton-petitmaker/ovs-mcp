@@ -4,6 +4,8 @@ import type { CartResult } from "./normalize.js";
 interface Confirmation {
   operation: "add" | "remove";
   productId: string;
+  productAttributeId: string;
+  productCustomizationId: string;
   quantity: number;
   fingerprint: string;
   expiresAt: number;
@@ -15,6 +17,8 @@ export class ConfirmationStore {
   create(
     operation: Confirmation["operation"],
     productId: string,
+    productAttributeId: string,
+    productCustomizationId: string,
     quantity: number,
     cart: CartResult,
   ): string {
@@ -23,6 +27,8 @@ export class ConfirmationStore {
     this.#values.set(token, {
       operation,
       productId,
+      productAttributeId,
+      productCustomizationId,
       quantity,
       fingerprint: cartFingerprint(cart),
       expiresAt: Date.now() + 5 * 60_000,
@@ -34,9 +40,10 @@ export class ConfirmationStore {
     token: string,
     operation: Confirmation["operation"],
     productId: string,
+    productAttributeId: string,
+    productCustomizationId: string,
     quantity: number,
-    cart: CartResult,
-  ): void {
+  ): string {
     this.#prune();
     const value = this.#values.get(token);
     this.#values.delete(token);
@@ -47,15 +54,13 @@ export class ConfirmationStore {
     if (
       value.operation !== operation ||
       value.productId !== productId ||
+      value.productAttributeId !== productAttributeId ||
+      value.productCustomizationId !== productCustomizationId ||
       value.quantity !== quantity
     ) {
       throw new Error("Confirmation token does not match this cart operation.");
     }
-    if (value.fingerprint !== cartFingerprint(cart)) {
-      throw new Error(
-        "Cart changed after preview. Request a new confirmation.",
-      );
-    }
+    return value.fingerprint;
   }
 
   #prune(): void {
@@ -68,26 +73,21 @@ export class ConfirmationStore {
 export function cartFingerprint(cart: CartResult): string {
   const state = {
     items: [...cart.items]
-      .map((item) => ({ productId: item.productId, quantity: item.quantity }))
-      .sort((a, b) => a.productId.localeCompare(b.productId)),
+      .map((item) => ({
+        productId: item.productId,
+        productAttributeId: item.productAttributeId,
+        productCustomizationId: item.productCustomizationId,
+        quantity: item.quantity,
+      }))
+      .sort((a, b) =>
+        [a.productId, a.productAttributeId, a.productCustomizationId]
+          .join(":")
+          .localeCompare(
+            [b.productId, b.productAttributeId, b.productCustomizationId].join(
+              ":",
+            ),
+          ),
+      ),
   };
   return createHash("sha256").update(JSON.stringify(state)).digest("hex");
-}
-
-export class MutationCoordinator {
-  #tail: Promise<void> = Promise.resolve();
-
-  async run<T>(operation: () => Promise<T>): Promise<T> {
-    const preceding = this.#tail;
-    let release = () => {};
-    this.#tail = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    await preceding;
-    try {
-      return await operation();
-    } finally {
-      release();
-    }
-  }
 }
