@@ -11,7 +11,26 @@ const PRODUCT_ID = "7";
 const ATTRIBUTE_ID = "3";
 const CUSTOMIZATION_ID = "0";
 
-function searchEnvelope(): Record<string, unknown> {
+function searchEnvelope({
+  includeUnavailableVariant = false,
+} = {}): Record<string, unknown> {
+  const unavailableProductId = "8";
+  const unavailableAttributeId = "4";
+  const unavailableRendered = includeUnavailableVariant
+    ? `<article class="product-miniature js-product-miniature" data-id-product="${unavailableProductId}" data-id-product-attribute="${unavailableAttributeId}">` +
+      `<h2 class="product-title"><a href="https://www.officialveganshop.com/synthetic-unavailable">Synthetic unavailable variant</a></h2>` +
+      `<span class="price">5,90 €</span>` +
+      `<div class="add-cart addtocart-disabled"></div>` +
+      `</article>`
+    : "";
+  const unavailableJson = includeUnavailableVariant
+    ? [
+        {
+          id_product: unavailableProductId,
+          add_to_cart_url: `/panier?add=1&id_product=${unavailableProductId}&id_product_attribute=${unavailableAttributeId}`,
+        },
+      ]
+    : [];
   return {
     rendered_products_top: "<div></div>",
     rendered_products:
@@ -20,7 +39,7 @@ function searchEnvelope(): Record<string, unknown> {
       `<h2 class="product-title"><a href="https://www.officialveganshop.com/synthetic-product">Synthetic Seitan</a></h2>` +
       `<span class="price">4,90 €</span>` +
       `<div class="add-cart" data-id-product="${PRODUCT_ID}" data-id-product-attribute="${ATTRIBUTE_ID}" data-id-customization="${CUSTOMIZATION_ID}" data-quantity="9" data-allow-oosp="0"></div>` +
-      `</article>`,
+      `</article>${unavailableRendered}`,
     rendered_products_bottom: "<div></div>",
     result: { categories: [] },
     label: "Synthetic result",
@@ -29,6 +48,7 @@ function searchEnvelope(): Record<string, unknown> {
         id_product: PRODUCT_ID,
         add_to_cart_url: `/panier?add=1&id_product=${PRODUCT_ID}&id_product_attribute=${ATTRIBUTE_ID}`,
       },
+      ...unavailableJson,
     ],
     sort_orders: [],
     sort_selected: "position",
@@ -166,6 +186,30 @@ describe("MCP server", () => {
           productAttributeId: ATTRIBUTE_ID,
           productCustomizationId: CUSTOMIZATION_ID,
         },
+      ],
+    });
+  });
+
+  it("keeps an unavailable variant visible without manufacturing a cart capability", async () => {
+    fetchMock.mockImplementation(async (url) => {
+      const parsed = new URL(String(url));
+      if (parsed.pathname === "/mon-compte")
+        return new Response("account", { status: 200 });
+      return Response.json(searchEnvelope({ includeUnavailableVariant: true }));
+    });
+    const result = await client.callTool({
+      name: "search_products",
+      arguments: { query: "seitan" },
+    });
+    expect(result.isError).not.toBe(true);
+    expect(result.structuredContent).toMatchObject({
+      products: [
+        expect.objectContaining({ id: PRODUCT_ID, availableForOrder: true }),
+        expect.objectContaining({
+          id: "8",
+          availableForOrder: false,
+          productCustomizationId: null,
+        }),
       ],
     });
   });

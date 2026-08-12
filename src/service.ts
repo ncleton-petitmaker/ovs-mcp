@@ -704,10 +704,18 @@ function validateSearchProducts(
       addUrl.searchParams.get("add") !== "1" ||
       addUrl.searchParams.get("id_product") !== product.id ||
       addUrl.searchParams.get("id_product_attribute") !==
-        product.productAttributeId ||
-      product.productCustomizationId === null ||
-      product.availableForOrder !== true
+        product.productAttributeId
     ) {
+      throw new Error("OVS add-to-cart product scope is no longer recognized.");
+    }
+    // Le flux de recherche retourne aussi les variantes épuisées : leur URL
+    // panier garde l'identité produit/variante, mais elles ne fournissent pas
+    // forcément l'identifiant de personnalisation exigé avant toute mutation.
+    // Elles restent donc visibles comme indisponibles, jamais actionnables.
+    if (product.availableForOrder !== true) {
+      return { ...product, availableForOrder: false };
+    }
+    if (product.productCustomizationId === null) {
       throw new Error("OVS add-to-cart product scope is no longer recognized.");
     }
     return product;
